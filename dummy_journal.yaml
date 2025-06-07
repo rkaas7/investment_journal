@@ -1,0 +1,15 @@
+entries:
+  - date: 2024-12-01
+    type: "Kauf"
+    asset: "AAPL"
+    price: 172.50
+    amount: 5
+    note: "Einstieg nach Earnings. Erwartung: weiteres Wachstum."
+    category: "Strategisch"
+    tags: ["Tech", "USA", "Buy and Hold"]
+
+  - date: 2025-01-15
+    type: "Market"
+    title: "FED belässt Zinsen bei 5.25%"
+    note: "Inflation sinkt leicht. Markt reagiert positiv."
+    tags: ["Makro", "Zinsen", "FED"]
