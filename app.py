@@ -20,11 +20,12 @@ COLORS = {
     'Sell': 'wheat',
     'Market Stories': 'skyblue',
     'Lessons Learned': 'chocolate',
-    'Success Stories': 'gold', 
+    'Success Stories': 'gold',
     'Strategy' : 'purple'
 }
 
-FONT_FAMILY = 'sans-serif'
+FONT_FAMILY = 'Segoe UI, sans-serif'
+FONT_COLOR = 'Black'
 
 
 def load_entries():
@@ -67,76 +68,120 @@ def create_card(entry):
     
     price = entry.get('price', None)       
     amount = entry.get('amount', None)
-    costs = None
-    if price != None and amount != None: 
-        costs = price * amount
+    costs = price * amount if price is not None and amount is not None else None
     
-    if costs != None:
-        sub_title = f"{safe_str(costs)} Euro ({safe_str(amount)} x {safe_str(price)}))"
-    else: 
-        sub_title = ""
+    sub_title = f"{safe_str(costs)} EUR ({safe_str(amount)} x {safe_str(price)})" if costs else ""
     
     date = entry.get('date')
     body = entry.get('note', '')
- 
     tags = ', '.join(entry.get('tags', []))
-    card_color = COLORS.get(entry.get('type'), 'silver')
+    card_color = COLORS.get(entry.get('type'), '#e9ecef')
 
     return html.Div([
-        html.H4(f"{title}  {sub_title}", style={"marginBottom": "5px"}),
-        html.Div(f"📅 {date}", style={"fontSize": "0.9em", "color": "gray"}),
-        dcc.Markdown(body, style={"marginTop": "10px"}),
-        html.Div(f"🏷️ {tags}", style={"fontSize": "0.85em", "marginTop": "8px", "color": "#777"}),
-        html.Button("🗑️ Delete", id={'type': 'delete-button', 'index': entry['id']}, style={
-            'marginTop': '10px',
-            'backgroundColor': '#ffdddd',
-            'border': 'none',
-            'padding': '6px 12px',
-            'cursor': 'pointer'
-        })
+        # Header-Zeile mit Titel und Button nebeneinander
+        html.Div([
+            html.H3(title, style={'margin': '0'}),
+            html.Button("❌", id={'type': 'delete-button', 'index': entry['id']}, style={
+                'backgroundColor': 'transparent',
+                'border': 'none',
+                'padding': '4px 10px',
+                'borderRadius': '6px',
+                'cursor': 'pointer',
+                'fontSize': '1em'
+            }),
+        ], style={
+            'display': 'flex',
+            'justifyContent': 'space-between',
+            'alignItems': 'center',
+            'marginBottom': '6px'
+        }),
+
+        dcc.Markdown(body, style={'marginBottom': '10px'}),
+
+        html.Div(f"Tags: {tags}", style={'fontSize': '0.85em'}),
+        
     ], style={
         'backgroundColor': card_color,
-        'padding': '15px',
-        'marginBottom': '15px',
-        'borderRadius': '10px',
-        'boxShadow': '0 2px 6px rgba(0,0,0,0.05)',
+        'padding': '20px',
+        'borderRadius': '12px',
+        'marginBottom': '20px',
+        'boxShadow': '0 4px 12px rgba(0,0,0,0.05)',
         'fontFamily': FONT_FAMILY
     })
 
+
 entry_types = ['Buy', 'Sell', 'Market Stories', 'Lessons Learned', 'Success Stories', 'Strategy']
 
-app.layout = html.Div(style={'fontFamily': FONT_FAMILY}, children=[
-    html.H1("📝 Personal Investment Journal", style={'textAlign': 'center'}),
+app.layout = html.Div(style={
+    'fontFamily': 'Segoe UI, sans-serif',
+    'backgroundImage': 'url("https://www.transparenttextures.com/patterns/paper-fibers.png")',
+    'backgroundRepeat': 'repeat',
+    'minHeight': '100vh',
+    'maxWidth': '65%',
+    'margin': '0 auto',
+    'padding': '30px',
+    'backgroundColor': '#fdfcf5',
+    'color': FONT_COLOR,
+}, children=[
+    html.H1("📝 Investment-Journal 📈", style={
+        'textAlign': 'center',
+        'marginBottom': '30px',
+        'fontSize': '2.5em',
+    }),
 
     html.Div([
-        html.Label("Filter by entry type:"),
         dcc.Dropdown(
             id='filter-type',
-            options=[{'label': 'All', 'value': 'ALL'}] + [{'label': t, 'value': t} for t in entry_types],
+            options=[{'label': 'All Types', 'value': 'ALL'}] + [{'label': t, 'value': t} for t in entry_types],
             value='ALL',
-            style={'width': '200px', 'marginRight': '20px'}
+            style={'minWidth': '180px', 'fontSize': '0.90em'}
         ),
-        html.Label("Year:"),
-        dcc.Input(id='filter-date', type='text', placeholder='e.g. 2024', style={'width': '180px', 'marginRight': '20px'}),
-        html.Label("Tags:"),
-        dcc.Input(id='filter-tags', type='text', placeholder='comma-separated', style={'width': '200px'})
-    ], style={'padding': '20px', 'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px'}),
+        dcc.Input(id='filter-date', type='text', placeholder='Filter by year e.g. 2024', style={'border': '1px solid #ced4da'}), 
+        dcc.Input(id='filter-tags', type='text', placeholder='Tags (comma-separated)', style={'border': '1px solid #ced4da'}),
+    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px', 'marginBottom': '15px'}), 
 
-    html.Div(id='entries-container', style={'padding': '0px 20px'}),
+    html.Div(id='entries-container'),
 
-    html.H2("➕ Add New Entry", style={'marginTop': '30px', 'textAlign': 'center'}),
+    html.H2("➕ Add New Entry", style={
+        'textAlign': 'center',
+        'marginTop': '40px',
+        'marginBottom': '20px',
+    }),
+
     html.Div([
-        dcc.Input(id='input-asset', type='text', placeholder='Asset or title', style={'width': '300px'}),
-        dcc.Dropdown(id='input-type', options=[{'label': t, 'value': t} for t in entry_types], value='Buy', style={'width': '200px'}),
-        dcc.Input(id='input-price', type='number', placeholder='Price (EUR.CENT)', style={'width': '150px'}),
-        dcc.Input(id='input-amount', type='number', placeholder='Amount', style={'width': '120px'}),
-        dcc.Input(id='input-tags', type='text', placeholder='Tags (comma-separated)', style={'width': '300px'}),
-    ], style={'margin': '10px 0', 'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px'}),
+        dcc.Dropdown(id='input-type', options=[{'label': t, 'value': t} for t in entry_types], value='Buy', style={'flex': '1', 'fontSize': '0.90em'}),
+        dcc.Input(id='input-asset', type='text', placeholder='Asset or Title', style={'flex': '2', 'border': '1px solid #ced4da'}),
+        dcc.Input(id='input-price', type='number', placeholder='Price (EUR)', style={'flex': '1', 'border': '1px solid #ced4da',}),
+        dcc.Input(id='input-amount', type='number', placeholder='Amount', style={'flex': '1', 'border': '1px solid #ced4da',}),
+        dcc.Input(id='input-tags', type='text', placeholder='Tags (comma-separated)', style={'flex': '2', 'border': '1px solid #ced4da',}),
+    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px', 'marginBottom': '15px'}), 
 
-    dcc.Textarea(id='input-note', placeholder='Your notes (Markdown supported)', style={'width': '100%', 'height': 120, 'marginBottom': '10px'}),
-    html.Button('Save entry', id='save-button', n_clicks=0),
-    #html.Div(id='save-feedback', style={'marginTop': '10px'}),
+    html.Div([
+        dcc.Textarea(id='input-note', placeholder='My thoughts or analysis... (Markdown supported)', style={
+            'padding': '20px',
+            'width': '100%',
+            'boxSizing': 'border-box',
+            'borderRadius': '12px',
+            'marginBottom': '20px',
+            'border': '1px solid #ced4da',
+            'resize': 'none'
+        }),
+    ], style={'maxWidth': '100%', 'margin': '0 auto'}),
+
+    html.Div([
+        html.Button('Save Note', id='save-button', n_clicks=0, style={
+            'backgroundColor': '#007bff',
+            'color': 'white',
+            'padding': '10px 20px',
+            'border': 'none',
+            'borderRadius': '5px',
+            'cursor': 'pointer',
+            'fontSize': '16px',
+            'marginTop': '10px'
+        }),
+    ], style={'textAlign': 'right'})
 ])
+
 
 @app.callback(
     Output('entries-container', 'children'),
