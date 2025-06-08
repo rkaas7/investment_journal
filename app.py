@@ -46,6 +46,18 @@ def save_entry(new_entry):
     except Exception as e:
         print(f"Error saving entry: {e}")
 
+def delete_entry_by_id(entry_id):
+    if FILE == DUMMY_FILE:
+        print("⚠️ Dummy mode: deletion not performed.")
+        return
+    with open(FILE, 'r') as f:
+        data = yaml.safe_load(f) or {}
+        entries = data.get('entries', [])
+        filtered = [e for e in entries if e.get('id') != entry_id]
+        data['entries'] = filtered
+    with open(FILE, 'w') as f:
+        yaml.safe_dump(data, f, allow_unicode=True)
+
 def create_card(entry):
     title = f"{entry.get('type')} - {entry.get('asset', entry.get('title', ''))}"
     date = entry.get('date')
@@ -140,7 +152,6 @@ def update_entries(filter_type, filter_date, filter_tags):
 def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
     if n_clicks < 1:
         return ""
-
     new_entry = {
         'id': str(uuid.uuid4()),
         'date': datetime.today().strftime('%Y-%m-%d'),
@@ -156,20 +167,10 @@ def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
         new_entry['title'] = asset
 
     save_entry(new_entry)
+    entries = load_entries()
+    entries.sort(key=lambda e: e.get('date', ''), reverse=True)
+    #return [create_card(e) for e in entries]
     return "✅ Entry saved! Please refresh to see it."
-
-
-def delete_entry_by_id(entry_id):
-    if FILE == DUMMY_FILE:
-        print("⚠️ Dummy mode: deletion not performed.")
-        return
-    with open(FILE, 'r') as f:
-        data = yaml.safe_load(f) or {}
-        entries = data.get('entries', [])
-        filtered = [e for e in entries if e.get('id') != entry_id]
-        data['entries'] = filtered
-    with open(FILE, 'w') as f:
-        yaml.safe_dump(data, f, allow_unicode=True)
 
 @app.callback(
     Output('entries-container', 'children', allow_duplicate=True),
@@ -179,14 +180,18 @@ def delete_entry_by_id(entry_id):
 )
 def handle_delete_entry(n_clicks_list, ids):
     triggered = dash.ctx.triggered_id
+
     if not triggered:
         return dash.no_update
-    delete_entry_by_id(triggered['index'])
-    # Return updated entry list
+
+    for idx, item in enumerate(ids): 
+        if item['index'] == triggered['index']: 
+            if n_clicks_list[idx] != None: 
+                delete_entry_by_id(triggered['index'])
+    
     entries = load_entries()
     entries.sort(key=lambda e: e.get('date', ''), reverse=True)
     return [create_card(e) for e in entries]
-
 
 if __name__ == '__main__':
     app.run(debug=True)
