@@ -64,7 +64,7 @@ def safe_str(val):
     return str(val) if isinstance(val, (int, float, str)) and val is not None else ""
 
 def create_card(entry):
-    title = f"{entry.get('type')} - {entry.get('asset', entry.get('title', ''))}"
+    title = f"{entry.get('type')} - {entry.get('title', '')}"
     
     price = entry.get('price', None)       
     amount = entry.get('amount', None)
@@ -81,14 +81,24 @@ def create_card(entry):
         # Header-Zeile mit Titel und Button nebeneinander
         html.Div([
             html.H3(f"{title}", style={'margin': '0'}),
-            html.Button("❌", id={'type': 'delete-button', 'index': entry['id']}, style={
+            html.Div([
+                html.Button("✏️", id={'type': 'edit-button', 'index': entry['id']}, style={
                 'backgroundColor': 'transparent',
                 'border': 'none',
                 'padding': '4px 10px',
                 'borderRadius': '6px',
                 'cursor': 'pointer',
                 'fontSize': '1em'
-            }),
+                }),
+                html.Button("❌", id={'type': 'delete-button', 'index': entry['id']}, style={
+                'backgroundColor': 'transparent',
+                'border': 'none',
+                'padding': '4px 10px',
+                'borderRadius': '6px',
+                'cursor': 'pointer',
+                'fontSize': '1em'
+                }),
+            ], style={'display': 'flex', 'gap': '5px'})
         ], style={
             'display': 'flex',
             'justifyContent': 'space-between',
@@ -129,10 +139,12 @@ app.layout = html.Div(style={
         'fontSize': '2.5em',
     }),
 
+    dcc.Store(id='edit-entry-store'),
+
     html.Div([
         dcc.Dropdown(
             id='filter-type',
-            options=[{'label': 'All Types', 'value': 'ALL'}] + [{'label': t, 'value': t} for t in entry_types],
+            options=[{'label': 'All', 'value': 'ALL'}] + [{'label': t, 'value': t} for t in entry_types],
             value='ALL',
             style={'minWidth': '180px', 'fontSize': '0.90em'}
         ),
@@ -150,7 +162,7 @@ app.layout = html.Div(style={
 
     html.Div([
         dcc.Dropdown(id='input-type', options=[{'label': t, 'value': t} for t in entry_types], value='Buy', style={'flex': '1', 'fontSize': '0.90em'}),
-        dcc.Input(id='input-asset', type='text', placeholder='Asset or Title', style={'flex': '2', 'border': '1px solid #ced4da'}),
+        dcc.Input(id='input-title', type='text', placeholder='Asset or Title', style={'flex': '2', 'border': '1px solid #ced4da'}),
         dcc.Input(id='input-price', type='number', placeholder='Price (EUR.CENT)', style={'flex': '1', 'border': '1px solid #ced4da',}),
         dcc.Input(id='input-amount', type='number', placeholder='Amount', style={'flex': '1', 'border': '1px solid #ced4da',}),
         dcc.Input(id='input-tags', type='text', placeholder='Tags (comma-separated)', style={'flex': '2', 'border': '1px solid #ced4da',}),
@@ -160,6 +172,7 @@ app.layout = html.Div(style={
         dcc.Textarea(id='input-note', placeholder='My thoughts or analysis... (Markdown supported)', style={
             'padding': '20px',
             'width': '100%',
+            'height': '200px',
             'boxSizing': 'border-box',
             'borderRadius': '12px',
             'marginBottom': '20px',
@@ -183,6 +196,46 @@ app.layout = html.Div(style={
 ])
 
 
+@app.callback(
+    Output('edit-entry-store', 'data'),
+    Input({'type': 'edit-button', 'index': ALL}, 'n_clicks'),
+    State({'type': 'edit-button', 'index': ALL}, 'id')
+)
+def load_entry_for_edit(n_clicks_list, ids):
+    triggered = dash.ctx.triggered_id
+    if triggered and isinstance(triggered, dict) and triggered['type'] == 'edit-button':
+        for idx, item in enumerate(ids): 
+            if item['index'] == triggered['index']: 
+                if n_clicks_list[idx] != None: 
+                    entry_id = triggered['index']
+                    entries = load_entries()
+                    for entry in entries:
+                        if entry['id'] == entry_id:
+                            return entry
+    return dash.no_update
+
+@app.callback(
+    Output('input-type', 'value'),
+    Output('input-title', 'value'),
+    Output('input-price', 'value'),
+    Output('input-amount', 'value'),
+    Output('input-note', 'value'),
+    Output('input-tags', 'value'),
+    Input('edit-entry-store', 'data'),
+    prevent_initial_call=True
+)
+def populate_form(entry):
+    if not entry:
+        raise dash.exceptions.PreventUpdate
+
+    return (
+        entry.get('type'),
+        entry.get('title'),
+        entry.get('price'),
+        entry.get('amount'),
+        entry.get('note'),
+        ', '.join(entry.get('tags', []))
+    )
 
 @app.callback(
     Output('entries-container', 'children'),
@@ -192,23 +245,24 @@ app.layout = html.Div(style={
     Input('save-button', 'n_clicks'),
     State('save-button', 'id'),
     State('input-type', 'value'),
-    State('input-asset', 'value'),
+    State('input-title', 'value'),
     State('input-price', 'value'),
     State('input-amount', 'value'),
     State('input-note', 'value'),
     State('input-tags', 'value'), 
     Input({'type': 'delete-button', 'index': ALL}, 'n_clicks'),
-    State({'type': 'delete-button', 'index': ALL}, 'id')
+    State({'type': 'delete-button', 'index': ALL}, 'id'),
+    State('edit-entry-store', 'data')
 )
 def show_entries(filter_type, filter_date, filter_tags, # filter menu
-                 n_clicks, save_button_id, typ, asset, price, amount, note, tags, # new element
-                 n_clicks_list, ids): # delete
+                 n_clicks, save_button_id, typ, title, price, amount, note, tags, # new element
+                 n_clicks_list, ids, edit_entry): # delete
 
     triggered = dash.ctx.triggered_id
 
     if triggered == 'save-button': # save button pressed
         # # save new notes
-        save_new_entry(n_clicks, typ, asset, price, amount, note, tags)
+        save_new_entry(n_clicks, typ, title, price, amount, note, tags, edit_entry)
 
     else: # check for delete button
         try: 
@@ -253,26 +307,41 @@ def update_entries(entries, filter_type, filter_date, filter_tags):
     return entries #[create_card(e) for e in entries]
 
 
-def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
-        if n_clicks < 1:
-            return
-        else: 
-            new_entry = {
-                'id': str(uuid.uuid4()),
-                'date': datetime.today().strftime('%Y-%m-%d'),
-                'type': typ,
-                'note': note,
-                'tags': [t.strip() for t in tags.split(',')] if tags else []
-            }
-            if typ in ['Buy', 'Sell']:
-                new_entry['asset'] = asset
-                new_entry['price'] = price
-                new_entry['amount'] = amount
-            else:
-                new_entry['title'] = asset
+def save_new_entry(n_clicks, typ, title, price, amount, note, tags, edit_entry):
+    if n_clicks < 1:
+        return
+    new_entry = {
+        'type': typ,
+        'note': note,
+        'tags': [t.strip() for t in tags.split(',')] if tags else [],
+        'date': datetime.today().strftime('%Y-%m-%d')
+    }
 
-            save_entry(new_entry)
+    new_entry['price'] = price
+    new_entry['amount'] = amount
+    new_entry['title'] = title
 
+    if edit_entry and edit_entry.get('id'):
+        new_entry['id'] = edit_entry['id']
+        update_entry_in_file(new_entry)
+    else:
+        new_entry['id'] = str(uuid.uuid4())
+        save_entry(new_entry)
+
+def update_entry_in_file(updated_entry):
+    if FILE == DUMMY_FILE:
+        print("⚠️ Dummy mode: update not performed.")
+        return
+    with open(FILE, 'r') as f:
+        data = yaml.safe_load(f) or {}
+        entries = data.get('entries', [])
+        for i, e in enumerate(entries):
+            if e.get('id') == updated_entry['id']:
+                entries[i] = updated_entry
+                break
+    data['entries'] = entries
+    with open(FILE, 'w') as f:
+        yaml.safe_dump(data, f, allow_unicode=True)
 
 def delete_entry(triggered, n_clicks_list, ids):
     # delete from file and from entries
