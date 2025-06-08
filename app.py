@@ -19,9 +19,9 @@ COLORS = {
     'Buy': 'lightgreen',
     'Sell': 'wheat',
     'Market Stories': 'skyblue',
-    'Lessons Learned': 'chocolate',
-    'Success Stories': 'gold',
-    'Strategy' : 'purple'
+    'Lessons Learned': '#ff6666',
+    'Success Stories': '#fff166',
+    'Strategy' : '#da66ff'
 }
 
 FONT_FAMILY = 'Segoe UI, sans-serif'
@@ -48,7 +48,7 @@ def save_entry(new_entry):
     except Exception as e:
         print(f"Error saving entry: {e}")
 
-def delete_entry_by_id(entry_id):
+def delete_entry_from_file(entry_id):
     if FILE == DUMMY_FILE:
         print("⚠️ Dummy mode: deletion not performed.")
         return
@@ -70,7 +70,7 @@ def create_card(entry):
     amount = entry.get('amount', None)
     costs = price * amount if price is not None and amount is not None else None
     
-    sub_title = f"{safe_str(costs)} EUR ({safe_str(amount)} x {safe_str(price)})" if costs else ""
+    sub_title = f"{safe_str(costs)}€ ({safe_str(amount)} x {safe_str(price)}€)" if costs else "-"
     
     date = entry.get('date')
     body = entry.get('note', '')
@@ -80,7 +80,7 @@ def create_card(entry):
     return html.Div([
         # Header-Zeile mit Titel und Button nebeneinander
         html.Div([
-            html.H3(title, style={'margin': '0'}),
+            html.H3(f"{title}", style={'margin': '0'}),
             html.Button("❌", id={'type': 'delete-button', 'index': entry['id']}, style={
                 'backgroundColor': 'transparent',
                 'border': 'none',
@@ -95,9 +95,9 @@ def create_card(entry):
             'alignItems': 'center',
             'marginBottom': '6px'
         }),
-
+        html.Div(f"📆: {date}", style={'fontSize': '0.85em'}),
+        html.Div(f"💵: {sub_title}", style={'fontSize': '0.85em'}),
         dcc.Markdown(body, style={'marginBottom': '10px'}),
-
         html.Div(f"Tags: {tags}", style={'fontSize': '0.85em'}),
         
     ], style={
@@ -151,7 +151,7 @@ app.layout = html.Div(style={
     html.Div([
         dcc.Dropdown(id='input-type', options=[{'label': t, 'value': t} for t in entry_types], value='Buy', style={'flex': '1', 'fontSize': '0.90em'}),
         dcc.Input(id='input-asset', type='text', placeholder='Asset or Title', style={'flex': '2', 'border': '1px solid #ced4da'}),
-        dcc.Input(id='input-price', type='number', placeholder='Price (EUR)', style={'flex': '1', 'border': '1px solid #ced4da',}),
+        dcc.Input(id='input-price', type='number', placeholder='Price (EUR.CENT)', style={'flex': '1', 'border': '1px solid #ced4da',}),
         dcc.Input(id='input-amount', type='number', placeholder='Amount', style={'flex': '1', 'border': '1px solid #ced4da',}),
         dcc.Input(id='input-tags', type='text', placeholder='Tags (comma-separated)', style={'flex': '2', 'border': '1px solid #ced4da',}),
     ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px', 'marginBottom': '15px'}), 
@@ -183,14 +183,50 @@ app.layout = html.Div(style={
 ])
 
 
+
 @app.callback(
     Output('entries-container', 'children'),
     Input('filter-type', 'value'),
     Input('filter-date', 'value'),
-    Input('filter-tags', 'value')
+    Input('filter-tags', 'value'),
+    Input('save-button', 'n_clicks'),
+    State('save-button', 'id'),
+    State('input-type', 'value'),
+    State('input-asset', 'value'),
+    State('input-price', 'value'),
+    State('input-amount', 'value'),
+    State('input-note', 'value'),
+    State('input-tags', 'value'), 
+    Input({'type': 'delete-button', 'index': ALL}, 'n_clicks'),
+    State({'type': 'delete-button', 'index': ALL}, 'id')
 )
-def update_entries(filter_type, filter_date, filter_tags):
+def show_entries(filter_type, filter_date, filter_tags, # filter menu
+                 n_clicks, save_button_id, typ, asset, price, amount, note, tags, # new element
+                 n_clicks_list, ids): # delete
+
+    triggered = dash.ctx.triggered_id
+
+    if triggered == 'save-button': # save button pressed
+        # # save new notes
+        save_new_entry(n_clicks, typ, asset, price, amount, note, tags)
+
+    else: # check for delete button
+        try: 
+            if triggered['type'] == 'delete-button':
+                delete_entry(triggered, n_clicks_list, ids)
+        except (ValueError, TypeError):
+                    pass  # Skip entries with invalid or missing date
+
     entries = load_entries()
+
+    # filter entries
+    entries = update_entries(entries, filter_type, filter_date, filter_tags)
+    
+    entries.sort(key=lambda e: e.get('date', ''), reverse=True)
+    return [create_card(e) for e in entries]
+
+
+def update_entries(entries, filter_type, filter_date, filter_tags):
     # filter by entry type
     if filter_type != 'ALL':
         entries = [e for e in entries if e.get('type') == filter_type]
@@ -213,62 +249,37 @@ def update_entries(filter_type, filter_date, filter_tags):
     if filter_tags:
         tag_list = [t.strip().lower() for t in filter_tags.split(',')]
         entries = [e for e in entries if any(t in [x.lower() for x in e.get('tags', [])] for t in tag_list)]
-    entries.sort(key=lambda e: e.get('date', ''), reverse=True)
-    return [create_card(e) for e in entries]
+    
+    return entries #[create_card(e) for e in entries]
 
-@app.callback(
-    Output('entries-container', 'children', allow_duplicate=True),
-    Input('save-button', 'n_clicks'),
-    State('input-type', 'value'),
-    State('input-asset', 'value'),
-    State('input-price', 'value'),
-    State('input-amount', 'value'),
-    State('input-note', 'value'),
-    State('input-tags', 'value'), 
-    prevent_initial_call='initial_duplicate'
-)
+
 def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
-    if n_clicks < 1:
-        return ""
-    new_entry = {
-        'id': str(uuid.uuid4()),
-        'date': datetime.today().strftime('%Y-%m-%d'),
-        'type': typ,
-        'note': note,
-        'tags': [t.strip() for t in tags.split(',')] if tags else []
-    }
-    if typ in ['Buy', 'Sell']:
-        new_entry['asset'] = asset
-        new_entry['price'] = price
-        new_entry['amount'] = amount
-    else:
-        new_entry['title'] = asset
+        if n_clicks < 1:
+            return
+        else: 
+            new_entry = {
+                'id': str(uuid.uuid4()),
+                'date': datetime.today().strftime('%Y-%m-%d'),
+                'type': typ,
+                'note': note,
+                'tags': [t.strip() for t in tags.split(',')] if tags else []
+            }
+            if typ in ['Buy', 'Sell']:
+                new_entry['asset'] = asset
+                new_entry['price'] = price
+                new_entry['amount'] = amount
+            else:
+                new_entry['title'] = asset
 
-    save_entry(new_entry)
-    entries = load_entries()
-    entries.sort(key=lambda e: e.get('date', ''), reverse=True)
-    return [create_card(e) for e in entries]
+            save_entry(new_entry)
 
-@app.callback(
-    Output('entries-container', 'children', allow_duplicate=True),
-    Input({'type': 'delete-button', 'index': ALL}, 'n_clicks'),
-    State({'type': 'delete-button', 'index': ALL}, 'id'),
-    prevent_initial_call='initial_duplicate'
-)
-def handle_delete_entry(n_clicks_list, ids):
-    triggered = dash.ctx.triggered_id
 
-    if not triggered:
-        return dash.no_update
-
+def delete_entry(triggered, n_clicks_list, ids):
+    # delete from file and from entries
     for idx, item in enumerate(ids): 
         if item['index'] == triggered['index']: 
             if n_clicks_list[idx] != None: 
-                delete_entry_by_id(triggered['index'])
-    
-    entries = load_entries()
-    entries.sort(key=lambda e: e.get('date', ''), reverse=True)
-    return [create_card(e) for e in entries]
+                delete_entry_from_file(triggered['index'])
 
 if __name__ == '__main__':
     app.run(debug=True)
