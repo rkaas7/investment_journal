@@ -20,7 +20,8 @@ COLORS = {
     'Sell': 'wheat',
     'Market Stories': 'skyblue',
     'Lessons Learned': 'chocolate',
-    'Success Stories': 'gold'
+    'Success Stories': 'gold', 
+    'Strategy' : 'purple'
 }
 
 FONT_FAMILY = 'sans-serif'
@@ -58,15 +59,31 @@ def delete_entry_by_id(entry_id):
     with open(FILE, 'w') as f:
         yaml.safe_dump(data, f, allow_unicode=True)
 
+def safe_str(val):
+    return str(val) if isinstance(val, (int, float, str)) and val is not None else ""
+
 def create_card(entry):
     title = f"{entry.get('type')} - {entry.get('asset', entry.get('title', ''))}"
+    
+    price = entry.get('price', None)       
+    amount = entry.get('amount', None)
+    costs = None
+    if price != None and amount != None: 
+        costs = price * amount
+    
+    if costs != None:
+        sub_title = f"{safe_str(costs)} Euro ({safe_str(amount)} x {safe_str(price)}))"
+    else: 
+        sub_title = ""
+    
     date = entry.get('date')
     body = entry.get('note', '')
+ 
     tags = ', '.join(entry.get('tags', []))
     card_color = COLORS.get(entry.get('type'), 'silver')
 
     return html.Div([
-        html.H4(f"{title}", style={"marginBottom": "5px"}),
+        html.H4(f"{title}  {sub_title}", style={"marginBottom": "5px"}),
         html.Div(f"📅 {date}", style={"fontSize": "0.9em", "color": "gray"}),
         dcc.Markdown(body, style={"marginTop": "10px"}),
         html.Div(f"🏷️ {tags}", style={"fontSize": "0.85em", "marginTop": "8px", "color": "#777"}),
@@ -86,7 +103,7 @@ def create_card(entry):
         'fontFamily': FONT_FAMILY
     })
 
-entry_types = ['Buy', 'Sell', 'Market Stories', 'Lessons Learned', 'Success Stories']
+entry_types = ['Buy', 'Sell', 'Market Stories', 'Lessons Learned', 'Success Stories', 'Strategy']
 
 app.layout = html.Div(style={'fontFamily': FONT_FAMILY}, children=[
     html.H1("📝 Personal Investment Journal", style={'textAlign': 'center'}),
@@ -99,8 +116,8 @@ app.layout = html.Div(style={'fontFamily': FONT_FAMILY}, children=[
             value='ALL',
             style={'width': '200px', 'marginRight': '20px'}
         ),
-        html.Label("Date (YYYY-MM-DD):"),
-        dcc.Input(id='filter-date', type='text', placeholder='e.g. 2024-06-01', style={'width': '180px', 'marginRight': '20px'}),
+        html.Label("Year:"),
+        dcc.Input(id='filter-date', type='text', placeholder='e.g. 2024', style={'width': '180px', 'marginRight': '20px'}),
         html.Label("Tags:"),
         dcc.Input(id='filter-tags', type='text', placeholder='comma-separated', style={'width': '200px'})
     ], style={'padding': '20px', 'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px'}),
@@ -111,14 +128,14 @@ app.layout = html.Div(style={'fontFamily': FONT_FAMILY}, children=[
     html.Div([
         dcc.Input(id='input-asset', type='text', placeholder='Asset or title', style={'width': '300px'}),
         dcc.Dropdown(id='input-type', options=[{'label': t, 'value': t} for t in entry_types], value='Buy', style={'width': '200px'}),
-        dcc.Input(id='input-price', type='number', placeholder='Price', style={'width': '120px'}),
+        dcc.Input(id='input-price', type='number', placeholder='Price (EUR.CENT)', style={'width': '150px'}),
         dcc.Input(id='input-amount', type='number', placeholder='Amount', style={'width': '120px'}),
         dcc.Input(id='input-tags', type='text', placeholder='Tags (comma-separated)', style={'width': '300px'}),
     ], style={'margin': '10px 0', 'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px'}),
 
     dcc.Textarea(id='input-note', placeholder='Your notes (Markdown supported)', style={'width': '100%', 'height': 120, 'marginBottom': '10px'}),
     html.Button('Save entry', id='save-button', n_clicks=0),
-    html.Div(id='save-feedback', style={'marginTop': '10px'}),
+    #html.Div(id='save-feedback', style={'marginTop': '10px'}),
 ])
 
 @app.callback(
@@ -129,10 +146,25 @@ app.layout = html.Div(style={'fontFamily': FONT_FAMILY}, children=[
 )
 def update_entries(filter_type, filter_date, filter_tags):
     entries = load_entries()
+    # filter by entry type
     if filter_type != 'ALL':
         entries = [e for e in entries if e.get('type') == filter_type]
+    # filter by year
     if filter_date:
-        entries = [e for e in entries if e.get('date') == filter_date]
+        try:
+            f_dt = datetime.strptime(filter_date, "%Y").year
+            filtered_entries = []
+            for e in entries:
+                try:
+                    e_dt = datetime.strptime(e.get('date'), "%Y-%m-%d").year
+                    if e_dt == f_dt:
+                        filtered_entries.append(e)
+                except (ValueError, TypeError):
+                    pass  # Skip entries with invalid or missing date
+            entries = filtered_entries
+        except ValueError:
+            pass  # Skip filtering if filter_date is not in 'YYYY' format 
+    # filter by specified tags
     if filter_tags:
         tag_list = [t.strip().lower() for t in filter_tags.split(',')]
         entries = [e for e in entries if any(t in [x.lower() for x in e.get('tags', [])] for t in tag_list)]
@@ -140,14 +172,15 @@ def update_entries(filter_type, filter_date, filter_tags):
     return [create_card(e) for e in entries]
 
 @app.callback(
-    Output('save-feedback', 'children'),
+    Output('entries-container', 'children', allow_duplicate=True),
     Input('save-button', 'n_clicks'),
     State('input-type', 'value'),
     State('input-asset', 'value'),
     State('input-price', 'value'),
     State('input-amount', 'value'),
     State('input-note', 'value'),
-    State('input-tags', 'value')
+    State('input-tags', 'value'), 
+    prevent_initial_call='initial_duplicate'
 )
 def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
     if n_clicks < 1:
@@ -169,8 +202,7 @@ def save_new_entry(n_clicks, typ, asset, price, amount, note, tags):
     save_entry(new_entry)
     entries = load_entries()
     entries.sort(key=lambda e: e.get('date', ''), reverse=True)
-    #return [create_card(e) for e in entries]
-    return "✅ Entry saved! Please refresh to see it."
+    return [create_card(e) for e in entries]
 
 @app.callback(
     Output('entries-container', 'children', allow_duplicate=True),
